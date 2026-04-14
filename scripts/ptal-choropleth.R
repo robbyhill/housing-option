@@ -1,7 +1,8 @@
 # ptal-choropleth.R
 #
 # Choropleth map of Public Transport Accessibility Level (PTAL) at LSOA level
-# across London, overlaid with borough and GLA outer boundaries.
+# across London, overlaid with borough and GLA outer boundaries, and
+# Underground station locations.
 #
 # Run from the project root (housing/).
 # Output saved to scripts/outputs/.
@@ -15,18 +16,21 @@ library(dplyr)
 ptal_path     <- "data/LSOA_aggregated_PTAL_stats_2023.geojson"
 gla_path      <- "data/gla/London_GLA_Boundary.shp"
 boroughs_path <- "data/statistical-gis-boundaries-london/ESRI/London_Borough_Excluding_MHW.shp"
+stations_path <- "data/Underground_Stations.geojson"
 
 # ── Load data ─────────────────────────────────────────────────────────────────
 
 ptal     <- st_read(ptal_path,     quiet = TRUE)
 gla      <- st_read(gla_path,      quiet = TRUE)
 boroughs <- st_read(boroughs_path, quiet = TRUE)
+stations <- st_read(stations_path, quiet = TRUE)
 
 # ── Align CRS → British National Grid (EPSG:27700) ───────────────────────────
 
 ptal     <- st_transform(ptal,     27700)
 gla      <- st_transform(gla,      27700)
 boroughs <- st_transform(boroughs, 27700)
+stations <- st_transform(stations, 27700)
 
 # ── PTAL grade as ordered factor ──────────────────────────────────────────────
 # Levels: 0 (worst) → 6b (best), preserving 1a/1b and 6a/6b subdivisions
@@ -56,15 +60,26 @@ ptal_colours <- c(
 p <- ggplot() +
   # LSOA fill — no borders at this resolution (too dense)
   geom_sf(data = ptal, aes(fill = ptal_grade), colour = NA) +
-  # Borough boundaries in white for within-borough variation reference
-  geom_sf(data = boroughs, fill = NA, colour = "white", linewidth = 0.25) +
-  # Outer GLA boundary in dark to frame the map
+  # Borough boundaries in black to show within-borough variation
+  geom_sf(data = boroughs, fill = NA, colour = "black", linewidth = 0.25) +
+  # Outer GLA boundary, slightly thicker to frame the map
   geom_sf(data = gla, fill = NA, colour = "#1a1a1a", linewidth = 0.7) +
+  # Underground stations as dots
+  geom_sf(data = stations, aes(colour = "Underground station"),
+          shape = 16, size = 1.2) +
   scale_fill_manual(
     values   = ptal_colours,
     name     = "PTAL",
     na.value = "grey80",
     drop     = FALSE
+  ) +
+  scale_colour_manual(
+    name   = NULL,
+    values = c("Underground station" = "black")
+  ) +
+  guides(
+    fill   = guide_legend(order = 1, override.aes = list(colour = NA)),
+    colour = guide_legend(order = 2, override.aes = list(size = 3))
   ) +
   labs(
     title   = "Public Transport Accessibility Level (PTAL) by LSOA, London 2023",
