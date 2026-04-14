@@ -2,8 +2,13 @@
 #
 # Choropleth map of Public Transport Accessibility Level (PTAL) at LSOA level
 # across London, overlaid with borough and GLA outer boundaries, and
-# Underground station locations.
+# TfL station locations (Underground only — see NOTE below).
 #
+# NOTE: Underground_Stations.geojson contains only London Underground stations.
+# To add DLR, Overground, Elizabeth line, and Tramlink stops, a broader TfL
+# stations dataset (all modes) would need to be downloaded separately.
+#
+# Design: no title in plot — add title/caption in the Quarto document.
 # Run from the project root (housing/).
 # Output saved to scripts/outputs/.
 
@@ -31,6 +36,23 @@ ptal     <- st_transform(ptal,     27700)
 gla      <- st_transform(gla,      27700)
 boroughs <- st_transform(boroughs, 27700)
 stations <- st_transform(stations, 27700)
+
+# ── Clip stations to Greater London boundary ──────────────────────────────────
+# Removes ~4 Underground stations outside the GLA boundary (e.g. Watford,
+# Chesham, Amersham). st_filter keeps only points that intersect the GLA polygon.
+
+stations <- st_filter(stations, gla)
+
+# ── Classify station type ─────────────────────────────────────────────────────
+# All records in this dataset are Underground/Tube. Column kept for when a
+# broader TfL stations file (DLR, Overground, etc.) is added in future.
+
+stations <- stations |>
+  mutate(station_type = if_else(
+    grepl("tube", tolower(MODES)),
+    "Underground station",
+    "Other TfL station"
+  ))
 
 # ── PTAL grade as ordered factor ──────────────────────────────────────────────
 # Levels: 0 (worst) → 6b (best), preserving 1a/1b and 6a/6b subdivisions
@@ -64,27 +86,26 @@ p <- ggplot() +
   geom_sf(data = boroughs, fill = NA, colour = "black", linewidth = 0.25) +
   # Outer GLA boundary, slightly thicker to frame the map
   geom_sf(data = gla, fill = NA, colour = "#1a1a1a", linewidth = 0.7) +
-  # Underground stations as dots
-  geom_sf(data = stations, aes(colour = "Underground station"),
-          shape = 16, size = 1.2) +
+  # TfL stations: Tube = filled dot, other = open dot.
+  # colour fixed at black (not in aes) so only one legend scale is needed.
+  geom_sf(data = stations,
+          aes(shape = station_type),
+          colour = "black", size = 1.4, stroke = 0.5) +
   scale_fill_manual(
     values   = ptal_colours,
     name     = "PTAL",
     na.value = "grey80",
     drop     = FALSE
   ) +
-  scale_colour_manual(
-    name   = NULL,
-    values = c("Underground station" = "black")
+  scale_shape_manual(
+    name   = "Stations",
+    values = c("Underground station" = 16, "Other TfL station" = 1)
   ) +
   guides(
-    fill   = guide_legend(order = 1, override.aes = list(colour = NA)),
-    colour = guide_legend(order = 2, override.aes = list(size = 3))
+    fill  = guide_legend(order = 1, override.aes = list(colour = NA)),
+    shape = guide_legend(order = 2, override.aes = list(size = 3, colour = "black"))
   ) +
-  labs(
-    title   = "Public Transport Accessibility Level (PTAL) by LSOA, London 2023",
-    caption = "Source: TfL Open Data. Borough and GLA boundaries: GLA London Datastore."
-  ) +
+  labs(caption = "Source: TfL Open Data. Borough and GLA boundaries: GLA London Datastore.") +
   theme_void() +
   theme(
     plot.title        = element_text(size = 12, hjust = 0, margin = margin(b = 8)),
