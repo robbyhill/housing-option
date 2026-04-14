@@ -1,12 +1,8 @@
 # ptal-choropleth.R
 #
 # Choropleth map of Public Transport Accessibility Level (PTAL) at LSOA level
-# across London, overlaid with borough and GLA outer boundaries, and
-# TfL station locations (Underground only — see NOTE below).
-#
-# NOTE: Underground_Stations.geojson contains only London Underground stations.
-# To add DLR, Overground, Elizabeth line, and Tramlink stops, a broader TfL
-# stations dataset (all modes) would need to be downloaded separately.
+# across London, overlaid with borough and GLA outer boundaries, and all TfL
+# station locations (Underground, DLR, Elizabeth line, Overground, Tramlink).
 #
 # Design: no title in plot — add title/caption in the Quarto document.
 # Run from the project root (housing/).
@@ -18,17 +14,26 @@ library(dplyr)
 
 # ── Paths (relative to project root) ─────────────────────────────────────────
 
-ptal_path     <- "data/LSOA_aggregated_PTAL_stats_2023.geojson"
-gla_path      <- "data/gla/London_GLA_Boundary.shp"
-boroughs_path <- "data/statistical-gis-boundaries-london/ESRI/London_Borough_Excluding_MHW.shp"
-stations_path <- "data/Underground_Stations.geojson"
+ptal_path       <- "data/LSOA_aggregated_PTAL_stats_2023.geojson"
+gla_path        <- "data/gla/London_GLA_Boundary.shp"
+boroughs_path   <- "data/statistical-gis-boundaries-london/ESRI/London_Borough_Excluding_MHW.shp"
+stations_folder <- "data/tfl_stations"
 
 # ── Load data ─────────────────────────────────────────────────────────────────
 
 ptal     <- st_read(ptal_path,     quiet = TRUE)
 gla      <- st_read(gla_path,      quiet = TRUE)
 boroughs <- st_read(boroughs_path, quiet = TRUE)
-stations <- st_read(stations_path, quiet = TRUE)
+
+# Load all TfL station files and combine. Schemas differ across modes (not all
+# have LINES/MODES/ATCOCODE), so select only the common columns before binding.
+station_files <- list.files(stations_folder, pattern = "[.]geojson$", full.names = TRUE)
+
+stations <- lapply(station_files, function(f) {
+  s <- st_read(f, quiet = TRUE)
+  s |> select(NAME, NETWORK, FULL_NAME)
+}) |>
+  bind_rows()
 
 # ── Align CRS → British National Grid (EPSG:27700) ───────────────────────────
 
@@ -38,18 +43,17 @@ boroughs <- st_transform(boroughs, 27700)
 stations <- st_transform(stations, 27700)
 
 # ── Clip stations to Greater London boundary ──────────────────────────────────
-# Removes ~4 Underground stations outside the GLA boundary (e.g. Watford,
-# Chesham, Amersham). st_filter keeps only points that intersect the GLA polygon.
+# Removes stations outside the GLA boundary (e.g. Watford, Chesham, Amersham
+# on the Underground; some Elizabeth line stops beyond Greater London).
 
 stations <- st_filter(stations, gla)
 
 # ── Classify station type ─────────────────────────────────────────────────────
-# All records in this dataset are Underground/Tube. Column kept for when a
-# broader TfL stations file (DLR, Overground, etc.) is added in future.
+# Underground → filled dot; all other TfL modes → open dot.
 
 stations <- stations |>
   mutate(station_type = if_else(
-    grepl("tube", tolower(MODES)),
+    NETWORK == "London Underground",
     "Underground station",
     "Other TfL station"
   ))
@@ -63,7 +67,7 @@ ptal <- ptal |>
   mutate(ptal_grade = factor(MEAN_PTAL_, levels = ptal_levels, ordered = TRUE))
 
 # ── Colour palette: cool (blue) → hot (red) ───────────────────────────────────
-# Uses a 9-colour diverging RdBu palette reversed (blue = poor, red = excellent)
+# 9-colour diverging RdBu palette reversed (blue = poor access, red = excellent)
 
 ptal_colours <- c(
   "0"  = "#2166ac",
@@ -79,6 +83,11 @@ ptal_colours <- c(
 
 # ── Plot ──────────────────────────────────────────────────────────────────────
 
+# Draw other TfL stations first (below Underground) so Tube dots are on top
+# where stops of different types share a location.
+stations_other <- filter(stations, station_type == "Other TfL station")
+stations_tube  <- filter(stations, station_type == "Underground station")
+
 p <- ggplot() +
   # LSOA fill — no borders at this resolution (too dense)
   geom_sf(data = ptal, aes(fill = ptal_grade), colour = NA) +
@@ -86,9 +95,12 @@ p <- ggplot() +
   geom_sf(data = boroughs, fill = NA, colour = "black", linewidth = 0.25) +
   # Outer GLA boundary, slightly thicker to frame the map
   geom_sf(data = gla, fill = NA, colour = "#1a1a1a", linewidth = 0.7) +
-  # TfL stations: Tube = filled dot, other = open dot.
-  # colour fixed at black (not in aes) so only one legend scale is needed.
-  geom_sf(data = stations,
+  # Other TfL stops first (open dots, drawn beneath Underground)
+  geom_sf(data = stations_other,
+          aes(shape = station_type),
+          colour = "black", size = 1.4, stroke = 0.5) +
+  # Underground stations on top (filled dots)
+  geom_sf(data = stations_tube,
           aes(shape = station_type),
           colour = "black", size = 1.4, stroke = 0.5) +
   scale_fill_manual(
@@ -108,7 +120,6 @@ p <- ggplot() +
   labs(caption = "Source: TfL Open Data. Borough and GLA boundaries: GLA London Datastore.") +
   theme_void() +
   theme(
-    plot.title        = element_text(size = 12, hjust = 0, margin = margin(b = 8)),
     plot.caption      = element_text(size = 7, colour = "grey50", hjust = 0,
                                      margin = margin(t = 8)),
     legend.title      = element_text(size = 9, face = "bold"),
