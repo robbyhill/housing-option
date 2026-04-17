@@ -32,3 +32,32 @@ Record of interactions with AI tools (Claude Code, claude-sonnet-4-6) during the
 The AI tool performed: file inspection and summarisation, code generation (R), git/GitHub setup, and file organisation. All intellectual direction — the paper's argument, framing, choice of datasets, and visualisation goals — came from the user.
 
 ---
+
+## Session 2 — 2026-04-14 (continued)
+
+**Tool:** Claude Code (claude-sonnet-4-6) via CLI
+
+### Interactions
+
+7. **PTAL choropleth iterations (`scripts/ptal-choropleth.R`, later folded into `dataviz.R`)**
+   Multiple rounds of refinement to the choropleth map: changed borough boundaries from white to black; added all TfL station modes (Underground filled dot, all others open dot); clipped stations to GLA boundary; removed title from plot per design principle (titles to live in Quarto document); fixed legend duplication bug caused by mapping both `shape` and `colour` aesthetics.
+
+8. **Full TfL stations dataset (`data/tfl_stations/`)**
+   User added a `tfl_stations/` folder with separate GeoJSON files for each TfL mode (Underground, DLR, Elizabeth line, Overground, Tramlink — 510 stations total). Script updated to load and combine all five files, classifying stations by mode for the filled/open dot distinction. Updated `data-sources.md`, `CLAUDE.md`, and `scripts/data-visualization.md` to reflect the canonical data source and design rule.
+
+9. **Script restructure: `main.R` + `dataviz.R`**
+   Per user instruction, consolidated individual per-visualisation scripts into a single `main.R` (data loading, joining, output generation) and `dataviz.R` (plotting functions). Removed `ptal-choropleth.R`.
+
+10. **ONS Census 2021 LSOA data (`data/lsoa/ons/`)**
+    Explored 8 ONS Census 2021 datasets (economic, age, qualifications, tenure, car availability, household composition, accommodation, country of birth) — all GeoPackages with multiple layers. Identified that the correct layer is `Lower_Super_Output_Area` (not the default OA layer), and that the source data contains ~50 exact duplicate rows requiring deduplication. All 4,994 London LSOAs in the PTAL data matched successfully via `LSOA21CD == geog_code`.
+
+11. **Vis 2: Mean PTAL by covariate quartile (`plot_ptal_by_covariate()`)**
+    Bar chart showing mean PTAL Accessibility Index by London-relative quartile of 6 ONS covariates (unemployed %, age 65+, no qualifications, social renting, private renting, no car), with 95% CI error bars and `facet_wrap()` by covariate. User specified Option C framing (covariate quartile on X axis, mean PTAL on Y).
+
+12. **Vis 3: OLS regression table (`run_ptal_regression()`, `save_regression_table()`)**
+    OLS regression of PTAL Accessibility Index on standardised ONS covariates. User confirmed: use `mean_AI` as DV; omit TfL stop binary (circular with PTAL). R² = 0.54. Dominant predictor: `no_car_perc` (+10.2 per SD). Saved as HTML via `modelsummary`.
+
+### Scope of AI contribution
+The AI tool performed: iterative code refinement and debugging (R/sf/ggplot2), data exploration, schema reconciliation across sources, and file/repo maintenance. All analytical framing, variable selection, and paper argument direction came from the user.
+
+---

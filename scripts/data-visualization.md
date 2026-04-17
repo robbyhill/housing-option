@@ -1,8 +1,15 @@
 # Overall notes
 
-You shouldn't split all of the data analysis and visualization work across different scripts. To the best of your ability, you should conduct all analysis necessary in a `main.R` and spin of `dataviz.R` or helper functions where necessary, but you certainly shouldn't have individual scripts for each visualization. 
+You shouldn't split all of the data analysis and visualization work across different scripts. To the best of your ability, you should conduct all analysis necessary in a `main.R` and spin off `dataviz.R` or helper functions where necessary, but you certainly shouldn't have individual scripts for each visualization. 
 
 If you're ever unsure about a specific visualization, you should ask for clarification. 
+
+## PTAL
+* All mapping visualizations should use the 1a-6b banding system instead of the 0 to ~100 Access Index. 
+* The bar chart should use the 0 to ~100 Access Index, and include in the footer how Access Index maps to PTAL 
+	* For mapping schema, see '/Users/roberthill/Library/Mobile Documents/com~apple~CloudDocs/oxford/ebsipe/option/housing/data/ai_to_ptal.png'
+* The regression uses OLS with the continuous Access Index (0–100+) as the outcome. PTAL bands are used for mapping only — the AI is the actual underlying measurement and avoids the unequally-spaced band-boundary problem in ordinal models.
+
 ## Design:
 * Omit the title from the plot/image itself and instead include the title/footnotes in the Quarto file when that Quarto document is eventually produced.
 * Use consistent color and visual variable design when producing the visualizations
@@ -16,10 +23,25 @@ If you're ever unsure about a specific visualization, you should ask for clarifi
 # List of visualizations
 1. Chloropleth map of PTAL at LSOA level, shaded using a cool to hot scale, and showing the 1a/1b and 6a/6b subdivsions
 	1. use the PTAL data: '/Users/roberthill/Library/Mobile Documents/com~apple~CloudDocs/oxford/ebsipe/option/housing/data/LSOA_aggregated_PTAL_stats_2023.geojson'
-	2. include the outer boundary for Greater London for style: '/Users/roberthill/Library/Mobile Documents/com~apple~CloudDocs/oxford/ebsipe/option/housing/data/gla'
-	3. Include the borough boundaries in black to make the boundaries stand out and show within-borough variation: '/Users/roberthill/Library/Mobile Documents/com~apple~CloudDocs/oxford/ebsipe/option/housing/data/statistical-gis-boundaries-london'
+	2. include the outer boundary for Greater London for style:
+		1. '/Users/roberthill/Library/Mobile Documents/com~apple~CloudDocs/oxford/ebsipe/option/housing/data/gla'
+	3. Include the borough boundaries in black to make the boundaries stand out and show within-borough variation: 
+		1. '/Users/roberthill/Library/Mobile Documents/com~apple~CloudDocs/oxford/ebsipe/option/housing/data/statistical-gis-boundaries-london'
 	4. Add TfL stations to show how PTAL score varies closely with Tube, Rail, LU, LO, DLR, and Tramlink access. Show as dots on the map. Identify Tube stop as a black dot and all other stops as an open dot, and include in the legend. Omit those TfL stations outside the Greater London boundary: `data/tfl_stations/` (Underground, DLR, Elizabeth line, Overground, Tramlink geojsons)
-2. Bar charts showing the percentages of the population living in each of the different PTAL categories, with `facet_wrap()` by different covariates of lower mobility
-	1. Use the PTAL data and combine it with the ONS' data: '/Users/roberthill/Library/Mobile Documents/com~apple~CloudDocs/oxford/ebsipe/option/housing/data/lsoa/ons/household_composition'
-	2. The goal is to see LSOAs' PTAL scores co-vary with things like economic composition of the household, age, qualifications, and tenure
-3. Regression table showing the same information as visualization (2), except the statistical approach. Regression of PTAL score ~ ONS covariates + TfL access 
+2. The same as (1), but with a few differences: 
+	1. A three-dimensional map with the z-dimension showing the population at the LSOA-level. Use the 2024 estimates of LSOA population by age and gender, but aggregate to one overall LSOA population figure
+		1. ''/Users/roberthill/Library/Mobile Documents/com~apple~CloudDocs/oxford/ebsipe/option/housing/data/lsoa/sapelsoasyoa20222024.xlsx'
+	2. Still use the PTAL 1a to 6b bands. 
+	3. Drop the boundaries for boroughs and LSOAs, as those will be hard to project
+	4. Drop the TfL stations, as those will not project cleanly onto the 3d visualization
+3. Bar charts showing how Access Index (not PTAL band) is associated with various covariates, using  `facet_wrap()`
+	1. Use the following file for reference: 
+		1. '/Users/roberthill/Library/Mobile Documents/com~apple~CloudDocs/oxford/ebsipe/option/housing/scripts/outputs/vis2-ptal-by-covariate.png'
+	2. The covariates included with the `facet_wrap()` should be: 
+	3. X-axis should be LSOA's quartile. Y-axis should be Access Index 
+	4. the bars should have the same color
+4. Regression table showing the same information as visualization (3), except the statistical approach.
+	1. OLS regression of PTAL Access Index (continuous, 0–100+) ~ standardised ONS covariates + population density
+	2. Predictors are standardised (mean=0, SD=1) so coefficients are directly comparable in magnitude
+	3. In the notes: state that the outcome is the raw Access Index; include the AI→PTAL band mapping; note that results are robust to ordered logistic regression on PTAL bands
+	4. Interpret as: a one-SD increase in each predictor is associated with β change in Access Index

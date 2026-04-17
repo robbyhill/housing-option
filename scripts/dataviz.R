@@ -51,49 +51,146 @@ plot_ptal_choropleth <- function(ptal_graded, boroughs, gla, stations) {
     )
 }
 
-# ── Vis 2: Mean PTAL AI by covariate quartile ─────────────────────────────────
+# ── Vis 2: 3D PTAL map with population height ─────────────────────────────────
 #
-# For each covariate, LSOAs are binned into London-relative quartiles.
-# Bars show mean PTAL Accessibility Index per quartile; error bars are 95% CI.
+# Rasterises PTAL AI (colour) and LSOA population (z-height) to a 200m grid,
+# then renders an interactive plotly 3D surface. Saved as self-contained HTML.
+# Borough/LSOA borders and TfL stations are omitted (too noisy in 3D).
 
-COVARIATE_LABELS <- c(
-  unemployed_perc         = "Unemployed (%)",
-  age_65_plus_perc        = "Age 65+ (%)",
-  no_qualifications_perc  = "No qualifications (%)",
-  rent_social_perc        = "Social renting (%)",
-  private_rent_perc       = "Private renting (%)",
-  no_car_perc             = "No car (%)"
+plot_ptal_3d <- function(ptal, pop_data, gla) {
+  library(terra)
+  library(plotly)
+  library(sf)
+
+  # Join population to PTAL geometry
+  ptal_pop <- ptal |>
+    left_join(pop_data, by = c("LSOA21CD" = "lsoa_code")) |>
+    filter(!is.na(pop_total))
+
+  # Rasterise to 200 m grid clipped to GLA
+  ptal_v <- terra::vect(sf::st_transform(ptal_pop, 27700))
+  gla_v  <- terra::vect(sf::st_transform(gla,      27700))
+
+  r_template <- terra::rast(terra::ext(gla_v), resolution = 200, crs = "EPSG:27700")
+  r_pop  <- terra::rasterize(ptal_v, r_template, field = "pop_total", fun = "sum")
+  r_ptal <- terra::rasterize(ptal_v, r_template, field = "mean_AI",   fun = "mean")
+
+  gla_mask <- terra::rasterize(gla_v, r_template, background = NA)
+  r_pop    <- terra::mask(r_pop,  gla_mask)
+  r_ptal   <- terra::mask(r_ptal, gla_mask)
+
+  pop_mat  <- as.matrix(r_pop,  wide = TRUE)
+  ptal_mat <- as.matrix(r_ptal, wide = TRUE)
+
+  pop_mat[is.na(pop_mat)] <- 0   # outside GLA → zero height
+
+  # Rasterise PTAL band as integer 1–9 (for discrete coloring)
+  band_to_int <- setNames(seq_along(PTAL_LEVELS), PTAL_LEVELS)
+  ptal_pop    <- ptal_pop |>
+    mutate(ptal_band_int = band_to_int[as.character(MEAN_PTAL_)])
+  ptal_v2      <- terra::vect(sf::st_transform(ptal_pop, 27700))
+  r_band        <- terra::rasterize(ptal_v2, r_template, field = "ptal_band_int", fun = "min")
+  r_band        <- terra::mask(r_band, gla_mask)
+  band_mat      <- as.matrix(r_band, wide = TRUE)
+
+  # Stepped discrete colorscale: each of 9 PTAL bands gets equal 1/9 segment
+  n      <- length(PTAL_LEVELS)
+  cols   <- unname(PTAL_COLOURS)
+  steps  <- unlist(lapply(seq_along(cols), function(i) {
+    list(list((i - 1) / n, cols[i]), list(i / n, cols[i]))
+  }), recursive = FALSE)
+
+  # Colorbar tick labels: one per band, positioned at band midpoint
+  tick_vals <- (seq_along(PTAL_LEVELS) - 0.5) / n * n  # 0.5, 1.5, … 8.5
+  tick_text <- PTAL_LEVELS
+
+  plot_ly(
+    z            = pop_mat,
+    surfacecolor = band_mat,
+    type         = "surface",
+    colorscale   = steps,
+    cmin         = 1,
+    cmax         = n,
+    colorbar     = list(
+      title      = list(text = "PTAL", font = list(size = 11)),
+      tickvals   = tick_vals,
+      ticktext   = tick_text,
+      tickmode   = "array"
+    ),
+    showscale    = TRUE,
+    hovertemplate = paste0(
+      "Population: %{z:.0f}<extra></extra>"
+    )
+  ) |>
+    layout(
+      scene = list(
+        xaxis = list(showticklabels = FALSE, title = "", showgrid = FALSE),
+        yaxis = list(showticklabels = FALSE, title = "", showgrid = FALSE),
+        zaxis = list(title = "Population", showgrid = TRUE),
+        camera = list(eye = list(x = 1.4, y = -1.4, z = 0.9)),
+        aspectmode = "manual",
+        aspectratio = list(x = 1.25, y = 1, z = 0.4)
+      ),
+      paper_bgcolor = "white",
+      margin = list(l = 0, r = 0, t = 0, b = 30),
+      annotations = list(list(
+        text      = "Source: TfL Open Data; ONS SAPE mid-2024. 200 m grid.",
+        showarrow = FALSE,
+        x = 0, y = 0, xref = "paper", yref = "paper",
+        xanchor = "left", font = list(size = 9, color = "grey50")
+      ))
+    )
+}
+
+# ── Vis 3: Mean PTAL Access Index by covariate quartile (household composition)
+#
+# For each household-composition variable, LSOAs are binned into London-relative
+# quartiles. Bars show mean PTAL Accessibility Index per quartile (95% CI).
+# Caption includes the Access Index → PTAL band mapping for reference.
+
+HH_COMP_LABELS <- c(
+  one_pers_all_perc  = "One-person households (%)",
+  fam_lone_all_perc  = "Lone-parent families (%)",
+  fam_cohab_all_perc = "Cohabiting families (%)",
+  fam_mar_all_perc   = "Married/CP families (%)"
 )
 
-plot_ptal_by_covariate <- function(df) {
+AI_PTAL_NOTE <- paste(
+  "PTAL bands (Access Index): 0 (=0), 1a (0.01-2.50), 1b (2.51-5.0),",
+  "2 (5.01-10.0), 3 (10.01-15.0), 4 (15.01-20.0),",
+  "5 (20.01-25.0), 6a (25.01-40.0), 6b (40.01+)."
+)
+
+plot_ptal_by_hh_comp <- function(df) {
   quartile_labels <- c("Q1\n(lowest)", "Q2", "Q3", "Q4\n(highest)")
 
-  results <- lapply(names(COVARIATE_LABELS), function(var) {
+  results <- lapply(names(HH_COMP_LABELS), function(var) {
     df |>
       mutate(quartile = factor(ntile(.data[[var]], 4), labels = quartile_labels)) |>
       group_by(quartile) |>
       summarise(
-        mean_ptal = mean(mean_AI, na.rm = TRUE),
-        se        = sd(mean_AI,   na.rm = TRUE) / sqrt(n()),
-        .groups   = "drop"
+        mean_ai = mean(mean_AI, na.rm = TRUE),
+        se      = sd(mean_AI,   na.rm = TRUE) / sqrt(n()),
+        .groups = "drop"
       ) |>
-      mutate(covariate = COVARIATE_LABELS[[var]])
+      mutate(covariate = HH_COMP_LABELS[[var]])
   }) |>
     bind_rows() |>
-    mutate(covariate = factor(covariate, levels = unname(COVARIATE_LABELS)))
+    mutate(covariate = factor(covariate, levels = unname(HH_COMP_LABELS)))
 
-  ggplot(results, aes(x = quartile, y = mean_ptal)) +
+  ggplot(results, aes(x = quartile, y = mean_ai)) +
     geom_col(fill = "#6baed6", width = 0.65) +
-    geom_errorbar(aes(ymin = mean_ptal - 1.96 * se,
-                      ymax = mean_ptal + 1.96 * se),
+    geom_errorbar(aes(ymin = mean_ai - 1.96 * se,
+                      ymax = mean_ai + 1.96 * se),
                   width = 0.2, linewidth = 0.4) +
     facet_wrap(~ covariate, nrow = 2) +
     labs(
       x       = "Quartile of covariate (London LSOAs)",
-      y       = "Mean PTAL Accessibility Index",
+      y       = "Mean PTAL Access Index",
       caption = paste(
-        "Source: TfL Open Data; ONS Census 2021. London LSOAs only (n = 4,994).",
-        "Error bars: 95% CI. Quartiles are London-relative."
+        "Source: TfL Open Data; ONS Census 2021 (household composition).",
+        "London LSOAs only (n ~4,994). Error bars: 95% CI. Quartiles are London-relative.",
+        AI_PTAL_NOTE
       )
     ) +
     theme_minimal(base_size = 10) +
@@ -107,18 +204,30 @@ plot_ptal_by_covariate <- function(df) {
     )
 }
 
-# ── Vis 3: Regression table ───────────────────────────────────────────────────
+# ── Vis 4: Regression table (OLS) ────────────────────────────────────────────
 #
-# OLS: mean_AI ~ ONS covariates (standardised). Saved as HTML for inspection;
-# the modelsummary() call can be embedded directly in Quarto.
+# OLS: mean_AI (continuous, 0–100+) ~ standardised ONS covariates + pop density.
+# Predictors standardised (mean=0, SD=1) so coefficients are directly comparable.
+# β = change in Access Index per one-SD increase in predictor.
+
+PRED_VARS <- c(
+  "unemployed_perc", "no_qualifications_perc",
+  "rent_social_perc", "private_rent_perc", "no_car_perc",
+  "one_pers_all_perc", "fam_lone_all_perc",
+  "fam_cohab_all_perc", "fam_mar_all_perc",
+  "pop_density_km2"
+)
 
 run_ptal_regression <- function(df) {
   df_scaled <- df |>
-    mutate(across(all_of(names(COVARIATE_LABELS)), \(x) as.numeric(scale(x))))
+    mutate(across(all_of(PRED_VARS), \(x) as.numeric(scale(x))))
 
   lm(
-    mean_AI ~ unemployed_perc + age_65_plus_perc + no_qualifications_perc +
-      rent_social_perc + private_rent_perc + no_car_perc,
+    mean_AI ~ unemployed_perc + no_qualifications_perc +
+      rent_social_perc + private_rent_perc + no_car_perc +
+      one_pers_all_perc + fam_lone_all_perc +
+      fam_cohab_all_perc + fam_mar_all_perc +
+      pop_density_km2,
     data = df_scaled
   )
 }
@@ -128,12 +237,28 @@ save_regression_table <- function(model, path_html) {
 
   coef_map <- c(
     unemployed_perc        = "Unemployed (%)",
-    age_65_plus_perc       = "Age 65+ (%)",
     no_qualifications_perc = "No qualifications (%)",
     rent_social_perc       = "Social renting (%)",
     private_rent_perc      = "Private renting (%)",
     no_car_perc            = "No car (%)",
+    one_pers_all_perc      = "One-person households (%)",
+    fam_lone_all_perc      = "Lone-parent families (%)",
+    fam_cohab_all_perc     = "Cohabiting families (%)",
+    fam_mar_all_perc       = "Married/CP families (%)",
+    pop_density_km2        = "Population density (per km2)",
     `(Intercept)`          = "Intercept"
+  )
+
+  notes <- paste(
+    "OLS. Outcome: PTAL Access Index (AI), a continuous measure of public transport",
+    "accessibility ranging from 0 to ~100; higher values indicate better access.",
+    "AI maps to PTAL bands as follows: 0 (AI=0), 1a (0.01-2.50), 1b (2.51-5.0),",
+    "2 (5.01-10.0), 3 (10.01-15.0), 4 (15.01-20.0), 5 (20.01-25.0),",
+    "6a (25.01-40.0), 6b (40.01+).",
+    "All predictors are standardised (mean=0, SD=1);",
+    "beta represents the change in AI associated with a one-SD increase in each predictor.",
+    "Results are robust to ordered logistic regression on PTAL bands.",
+    "London LSOAs only (n=4,994). Source: TfL Open Data; ONS Census 2021; ONS SAPE mid-2024."
   )
 
   modelsummary(
@@ -141,9 +266,7 @@ save_regression_table <- function(model, path_html) {
     coef_map   = coef_map,
     stars      = TRUE,
     gof_map    = c("nobs", "r.squared", "adj.r.squared"),
-    notes      = paste("OLS. DV: PTAL Accessibility Index (0–100).",
-                       "Predictors standardised (mean = 0, SD = 1).",
-                       "London LSOAs only. Source: TfL Open Data; ONS Census 2021."),
+    notes      = notes,
     output     = path_html
   )
 }
