@@ -30,6 +30,10 @@ This is an academic course directory for an Oxford EBSIPE (Economics, Business, 
   - `journey-time-statistics-2019/` — DfT JTS 2019: journey times to 8 key services by mode; JTS04xx at LA level, JTS05xx at LSOA level
   - `2024-25-annual-network-performance-summary.ods` — TfL bus network reliability metrics (TfL)
   - `2026_02_ma_mbta/` — Massachusetts parking statistics CSVs (1-family and 4-family) and SVG visualisations, created for Abundant Housing MA
+  - `mbta_new_area_slices.gpkg` — 1,898 upzoned multi-family zone polygons across 110 MA municipalities (MBTA Communities Act); fields: id_union, jurisdiction_id, jurisdiction, county, acres; CRS WGS 84
+  - `mbta_rapid_transit/` — MBTA rapid transit nodes and arcs (shapefile, NAD83/MA Mainland); 170 station points, fields: STATION, LINE, TERMINUS, ROUTE
+  - `MBTA_Commuter_Rail_Stations/` — MBTA commuter rail station points (shapefile, NAD83/MA Mainland); 166 stations, fields: STATION, LINE_BRNCH
+  - `MBTA Communities Community Categories and Capacity Calculations for web_June2025.csv` — 177 MBTA communities with: Community category (Rapid Transit / Commuter Rail / Adjacent community / Adjacent small town), 2020 Housing Units, Minimum multi-family unit capacity, Unit capacity % of Total Housing units, Minimum land area, Developable station area, % of district in station area
 - **`scripts/`** — R scripts for data visualisation (tracked in `housing-option` GitHub repo):
   - `data-visualization.md` — visualisation brief and design principles
   - `main.R` — master script: loads all data, joins ONS to PTAL, generates all outputs
@@ -59,8 +63,12 @@ All R scripts live in `scripts/` and are tracked in the `housing-option` GitHub 
 
 **Completed visualisations (all in `main.R` / `dataviz.R`):**
 1. `plot_ptal_choropleth()` — PTAL by LSOA choropleth, blue→red, with borough boundaries and all TfL station dots
-2. `plot_ptal_by_covariate()` — bar charts of mean PTAL AI by quartile of 6 ONS covariates (unemployed %, age 65+, no qualifications, social renting, private renting, no car)
-3. `run_ptal_regression()` + `save_regression_table()` — OLS of mean_AI on standardised ONS covariates; R²=0.54, no_car_perc dominant predictor (+10.2)
+2. `plot_ptal_3d()` — interactive 3D PTAL surface with population height, rendered as HTML via plotly
+3. `plot_ptal_by_hh_comp()` — bar charts of mean PTAL AI by quartile of household composition covariates
+4. `run_ptal_regression()` + `save_regression_table()` — OLS of mean_AI on standardised ONS covariates; R²=0.54, no_car_perc dominant predictor (+10.2)
+5. `plot_brownfield_map()` — brownfield site polygons (brown) over London boroughs with TfL stations
+6. `plot_brownfield_distance()` — scatterplot of log(site area) vs distance to nearest TfL station; 800m reference line
+7. `plot_mbta_communities()` — Greater Boston map: municipalities shaded by MBTA community category (Rapid Transit / Commuter Rail / Adjacent community / Adjacent small town); orange MBTA upzoned slices overlaid; rapid transit nodes (filled circle) and commuter rail stations (open triangle). Municipal boundaries from `tigris::county_subdivisions("MA")` — tigris normalisation: strip " Town"/" City" suffix, map "Manchester-by-the-Sea" → "Manchester". 169/177 CSV communities matched.
 
 # Notes on Git commits
 

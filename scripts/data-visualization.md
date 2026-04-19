@@ -4,6 +4,8 @@ You shouldn't split all of the data analysis and visualization work across diffe
 
 If you're ever unsure about a specific visualization, you should ask for clarification. 
 
+Always add legends, cardinal directions, and scales to maps
+
 ## PTAL
 * All mapping visualizations should use the 1a-6b banding system instead of the 0 to ~100 Access Index. 
 * The bar chart should use the 0 to ~100 Access Index, and include in the footer how Access Index maps to PTAL 
@@ -45,3 +47,25 @@ If you're ever unsure about a specific visualization, you should ask for clarifi
 	2. Predictors are standardised (mean=0, SD=1) so coefficients are directly comparable in magnitude
 	3. In the notes: state that the outcome is the raw Access Index; include the AI→PTAL band mapping; note that results are robust to ordered logistic regression on PTAL bands
 	4. Interpret as: a one-SD increase in each predictor is associated with β change in Access Index
+5. Map showing the location of brownfield sites in London
+	1. Add borough boundaries
+	2. Add TfL stations 
+	3. Add London boundary 
+	4. Shade the brownfield sites brown 
+6. Scatterplot showing the relationship between log(brownfield site size (hectares)) and distance to the nearest TfL station (m)  
+	1. Include all geojsons in the `tfl_stations/` folder -- I.e., measure the distance from the brownfield site to any TfL station, not just a tube stop
+	2. Use the polygon centroid from the geopackage as the location of site `i` for all sites. Do NOT use `geox`/`geoy` from the CSV — submitted coordinates are a mix of CRS systems and contain errors.
+	3. Use `Shape_Area / 10000` from the geopackage as site area in hectares. Do NOT use `hectares` from the CSV — ~80% of values are rounded to 2dp and ~40% differ from the GIS area by >20%
+	4. Filter to `gis_ha > 0.01` to remove polygon slivers/geometry errors.
+	5. Put log site area (GIS hectares) on the x-axis and distance to TfL station (m) on the y-axis
+	6. Add a horizontal dashed reference line at 800m labelled "800m walkability threshold (DfT)", citing DfT Manual for Streets (2007)
+	7. For the notes, use the Quarto image notes feature, not R native captions
+7. Map of the Greater Boston Region showing the location of the upzoned MBTA slices
+	1. overlay the MA municipal boundaries
+	2. Add in the MBTA rapid transit stops:
+		1. '/Users/roberthill/Library/Mobile Documents/com~apple~CloudDocs/oxford/ebsipe/option/housing/data/mbta_rapid_transit'
+	3. Add in MA commuter rail stations
+		1. '/Users/roberthill/Library/Mobile Documents/com~apple~CloudDocs/oxford/ebsipe/option/housing/data/MBTA_Commuter_Rail_Stations'
+	4. Clip the boundaries to those municipalities identified in the CSV:
+		1. '/Users/roberthill/Library/Mobile Documents/com~apple~CloudDocs/oxford/ebsipe/option/housing/data/MBTA Communities Community Categories and Capacity Calculations for web_June2025.csv'
+	5. Shade the municipalities according to their community category/percentage of housing stock needed in new zone

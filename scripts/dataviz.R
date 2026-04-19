@@ -232,6 +232,182 @@ run_ptal_regression <- function(df) {
   )
 }
 
+# ── Vis 5: Brownfield sites map ───────────────────────────────────────────────
+#
+# Shades brownfield site polygons brown over a grey borough base, with TfL
+# stations and GLA boundary. Scale bar and north arrow included per design spec.
+
+plot_brownfield_map <- function(brownfield_poly, boroughs, gla, stations) {
+  library(ggspatial)
+
+  stations_other <- filter(stations, station_type == "Other TfL station")
+  stations_tube  <- filter(stations, station_type == "Underground station")
+
+  ggplot() +
+    geom_sf(data = boroughs, fill = "grey96", colour = "black", linewidth = 0.25) +
+    geom_sf(data = brownfield_poly, fill = "#8B4513", colour = NA, alpha = 0.75) +
+    geom_sf(data = gla, fill = NA, colour = "#1a1a1a", linewidth = 0.7) +
+    geom_sf(data = stations_other, aes(shape = station_type),
+            colour = "black", size = 1.0, stroke = 0.5) +
+    geom_sf(data = stations_tube, aes(shape = station_type),
+            colour = "black", size = 1.0, stroke = 0.5) +
+    scale_shape_manual(name   = "Stations",
+                       values = c("Underground station" = 16, "Other TfL station" = 1)) +
+    guides(shape = guide_legend(override.aes = list(size = 3, colour = "black"))) +
+    annotation_scale(location = "bl", width_hint = 0.2, style = "ticks") +
+    annotation_north_arrow(location = "tr", which_north = "true",
+                           style = north_arrow_minimal()) +
+    labs(caption = "Source: GLA London Brownfield Land Register; TfL Open Data; GLA London Datastore.") +
+    theme_void() +
+    theme(
+      plot.caption      = element_text(size = 7, colour = "grey50", hjust = 0,
+                                       margin = margin(t = 8)),
+      legend.title      = element_text(size = 9, face = "bold"),
+      legend.text       = element_text(size = 8),
+      legend.key.height = unit(14, "pt"),
+      legend.key.width  = unit(14, "pt"),
+      plot.margin       = margin(12, 12, 12, 12)
+    )
+}
+
+# ── Vis 6: Brownfield site area vs distance to nearest TfL station ────────────
+#
+# Scatterplot of log(hectares) vs distance to nearest TfL station (any mode).
+# Point locations: geox/geoy from register where available; polygon centroid
+# otherwise (applies almost exclusively to the London Borough of Brent, which
+# did not provide coordinates in its submission). Distance pre-computed in main.R.
+
+plot_brownfield_distance <- function(brownfield_pts) {
+  plot_df <- brownfield_pts |>
+    st_drop_geometry() |>
+    filter(!is.na(gis_ha), gis_ha > 0.01, !is.na(dist_m))
+
+  ggplot(plot_df, aes(x = log(gis_ha), y = dist_m)) +
+    geom_hline(yintercept = 800, linetype = "dashed", colour = "grey40",
+               linewidth = 0.5) +
+    geom_point(alpha = 0.35, size = 1.2, colour = "#8B4513") +
+    geom_smooth(method = "lm", colour = "black", linewidth = 0.7,
+                se = TRUE, fill = "grey80") +
+    annotate("text", x = max(log(plot_df$gis_ha)) * 0.95, y = 750,
+             label = "800m walkability threshold (DfT)", hjust = 1,
+             size = 3, colour = "grey40") +
+    labs(
+      x = "Log site area (hectares)",
+      y = "Distance to nearest TfL station (m)"
+    ) +
+    theme_minimal(base_size = 10) +
+    theme(
+      panel.grid.minor = element_blank()
+    )
+}
+
+# ── Vis 7: MBTA Communities map ──────────────────────────────────────────────
+#
+# Choropleth of Massachusetts municipalities by MBTA community category, with
+# upzoned MBTA area slices overlaid in orange, rapid transit nodes, and
+# commuter rail stations. Municipal boundaries from the tigris package.
+
+MBTA_CAT_COLOURS <- c(
+  "Rapid Transit"       = "#2166ac",
+  "Commuter Rail"       = "#92c5de",
+  "Adjacent community"  = "#d1e5f0",
+  "Adjacent small town" = "#f7f7f7"
+)
+
+plot_mbta_communities <- function(mbta_slices, mbta_csv, commuter_rail) {
+  library(tigris)
+  library(ggspatial)
+
+  options(tigris_use_cache = TRUE)
+
+  # MA municipal boundaries (county subdivisions = towns/cities in New England)
+  ma_towns <- county_subdivisions("MA", cb = TRUE, progress_bar = FALSE) |>
+    st_transform(4326)
+
+  # Join community category from CSV; filter to MBTA communities only.
+  # Normalise names: strip " Town"/" City" suffixes from tigris names;
+  # map "Manchester-by-the-Sea" → "Manchester" to match CSV spelling.
+  mbta_csv_clean <- mbta_csv |>
+    mutate(community_upper = toupper(trimws(Community)))
+
+  ma_towns_joined <- ma_towns |>
+    mutate(
+      name_norm = toupper(trimws(NAME)),
+      name_norm = sub(" TOWN$| CITY$", "", name_norm),
+      name_norm = sub("^MANCHESTER-BY-THE-SEA$", "MANCHESTER", name_norm)
+    ) |>
+    inner_join(
+      select(mbta_csv_clean, community_upper,
+             community_category = `Community category`,
+             capacity_pct       = `Unit capacity % of Total Housing units`),
+      by = c("name_norm" = "community_upper")
+    ) |>
+    mutate(community_category = factor(community_category,
+                                       levels = names(MBTA_CAT_COLOURS)))
+
+  # Compute bounding box from matched municipalities
+  bbox <- st_bbox(ma_towns_joined)
+
+  # Commuter rail: MA only, clipped to matched MBTA municipalities so that
+  # stations in Boston proper (not in the communities dataset) don't float
+  # over the harbour with no municipality fill beneath them.
+  cr <- commuter_rail |>
+    filter(STATE == "MA") |>
+    st_transform(4326) |>
+    st_filter(ma_towns_joined)
+
+  # Dissolve slices to one polygon per jurisdiction for visibility.
+  # st_make_valid() guards against any invalid geometries before union.
+  mbta_dissolved <- mbta_slices |>
+    st_make_valid() |>
+    group_by(jurisdiction) |>
+    summarise(.groups = "drop")
+
+  ggplot() +
+    # Municipality fill by community category
+    geom_sf(data = ma_towns_joined,
+            aes(fill = community_category),
+            colour = "grey40", linewidth = 0.2) +
+    # Commuter rail stations (filled dot)
+    geom_sf(data = cr,
+            aes(shape = "Commuter rail station"),
+            size = 1.8, colour = "black", stroke = 0.5) +
+    # Dissolved upzoned zone outlines — drawn last so visible over dots
+    geom_sf(data = mbta_dissolved,
+            fill = NA, colour = "#e6550d", linewidth = 0.5) +
+    scale_fill_manual(
+      values   = MBTA_CAT_COLOURS,
+      name     = "MBTA community\ncategory",
+      na.value = "grey90",
+      drop     = FALSE
+    ) +
+    scale_shape_manual(
+      name   = "Stations",
+      values = c("Commuter rail station" = 16)
+    ) +
+    guides(
+      fill  = guide_legend(order = 1,
+                           override.aes = list(colour = "grey40", linewidth = 0.3)),
+      shape = guide_legend(order = 2,
+                           override.aes = list(size = 3, colour = "black"))
+    ) +
+    annotation_scale(location = "bl", width_hint = 0.2, style = "ticks") +
+    annotation_north_arrow(location = "tr", which_north = "true",
+                           style = north_arrow_orienteering(fill = c("black", "white"),
+                                                            line_col = "black",
+                                                            text_col = "black")) +
+    coord_sf(xlim = c(bbox["xmin"] - 0.05, bbox["xmax"] + 0.05),
+             ylim = c(bbox["ymin"] - 0.05, bbox["ymax"] + 0.05)) +
+    theme_void() +
+    theme(
+      legend.title      = element_text(size = 9, face = "bold"),
+      legend.text       = element_text(size = 8),
+      legend.key.height = unit(14, "pt"),
+      legend.key.width  = unit(14, "pt"),
+      plot.margin       = margin(12, 12, 12, 12)
+    )
+}
+
 save_regression_table <- function(model, path_html) {
   library(modelsummary)
 

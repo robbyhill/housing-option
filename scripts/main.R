@@ -8,6 +8,7 @@
 library(sf)
 library(dplyr)
 library(readxl)
+library(readr)
 
 source("scripts/dataviz.R")
 
@@ -111,7 +112,38 @@ london_ons <- ptal |>
 
 message("London LSOAs in joined dataset: ", nrow(london_ons))
 
-# ── 8. Generate and save visualisations ──────────────────────────────────────
+# ── 8. Load and prep brownfield register ─────────────────────────────────────
+
+brownfield_poly <- st_read("data/Brownfield_Register.gpkg",
+                           layer = "brownfield_register", quiet = TRUE) |>
+  st_transform(27700)
+
+brownfield_csv <- read.csv("data/Brownfield_Register_tbl.csv", stringsAsFactors = FALSE)
+
+# Use polygon centroids and GIS area from geopackage for all sites.
+# CSV coordinates are unreliable (mixed CRS, errors) and CSV hectares are
+# rounded estimates (~80% at 2dp, ~40% differ from GIS area by >20%).
+bf_centroids <- st_centroid(brownfield_poly)
+centroid_xy  <- st_coordinates(bf_centroids)
+
+brownfield_pts <- st_drop_geometry(bf_centroids) |>
+  mutate(
+    gis_ha = Shape_Area / 10000,
+    x      = centroid_xy[, 1],
+    y      = centroid_xy[, 2]
+  ) |>
+  left_join(brownfield_csv, by = c("OBJECTID" = "objectid")) |>
+  filter(!is.na(x), !is.na(y)) |>
+  st_as_sf(coords = c("x", "y"), crs = 27700)
+
+# Compute distance (metres) from each site to nearest TfL station
+dist_mat <- st_distance(brownfield_pts, stations)
+brownfield_pts <- brownfield_pts |>
+  mutate(dist_m = apply(as.matrix(dist_mat), 1, min))
+
+message("Brownfield sites loaded: ", nrow(brownfield_pts), " (centroids from geopackage)")
+
+# ── 9. Generate and save visualisations ──────────────────────────────────────
 
 # Vis 1: PTAL choropleth
 p1 <- plot_ptal_choropleth(ptal_graded, boroughs, gla, stations)
@@ -138,5 +170,45 @@ message("Saved vis3-ptal-by-hh-comp")
 model <- run_ptal_regression(london_ons)
 save_regression_table(model, "scripts/outputs/vis4-regression-table.html")
 message("Saved vis4-regression-table")
+
+# Vis 5: Brownfield map
+p5 <- plot_brownfield_map(brownfield_poly, boroughs, gla, stations)
+ggsave("scripts/outputs/vis5-brownfield-map.png",
+       p5, width = 10, height = 8, dpi = 300, bg = "white")
+ggsave("scripts/outputs/vis5-brownfield-map.pdf",
+       p5, width = 10, height = 8)
+message("Saved vis5-brownfield-map")
+
+# Vis 6: Brownfield size vs distance to nearest TfL station
+p6 <- plot_brownfield_distance(brownfield_pts)
+ggsave("scripts/outputs/vis6-brownfield-distance.png",
+       p6, width = 8, height = 6, dpi = 300, bg = "white")
+ggsave("scripts/outputs/vis6-brownfield-distance.pdf",
+       p6, width = 8, height = 6)
+message("Saved vis6-brownfield-distance")
+
+# ── 10. Load MBTA Communities data ───────────────────────────────────────────
+
+mbta_slices <- st_read("data/mbta_new_area_slices.gpkg", quiet = TRUE)
+
+mbta_csv <- read_csv(
+  "data/MBTA Communities Community Categories and Capacity Calculations for web_June2025.csv",
+  show_col_types = FALSE
+)
+
+mbta_rapid_transit <- st_read("data/mbta_rapid_transit", layer = "MBTA_NODE", quiet = TRUE)
+
+mbta_commuter_rail <- st_read("data/MBTA_Commuter_Rail_Stations", quiet = TRUE)
+
+message("MBTA slices loaded: ", nrow(mbta_slices))
+message("MBTA communities CSV: ", nrow(mbta_csv), " rows")
+
+# Vis 7: MBTA Communities map
+p7 <- plot_mbta_communities(mbta_slices, mbta_csv, mbta_commuter_rail)
+ggsave("scripts/outputs/vis7-mbta-communities.png",
+       p7, width = 12, height = 9, dpi = 300, bg = "white")
+ggsave("scripts/outputs/vis7-mbta-communities.pdf",
+       p7, width = 12, height = 9)
+message("Saved vis7-mbta-communities")
 
 message("\nAll outputs written to scripts/outputs/")

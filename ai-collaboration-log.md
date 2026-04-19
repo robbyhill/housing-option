@@ -61,3 +61,72 @@ The AI tool performed: file inspection and summarisation, code generation (R), g
 The AI tool performed: iterative code refinement and debugging (R/sf/ggplot2), data exploration, schema reconciliation across sources, and file/repo maintenance. All analytical framing, variable selection, and paper argument direction came from the user.
 
 ---
+
+## Session 3 — 2026-04-17/18
+
+**Tool:** Claude Code (claude-sonnet-4-6) via CLI
+
+### Interactions
+
+13. **Policy research: demand-side housing subsidies and transport accessibility**
+    Researched whether London/UK housing demand-side subsidies (Housing Benefit, Universal Credit/LHA, Help to Buy) are conditioned on transport accessibility or PTAL. Finding: no explicit conditionality exists. Explained the Housing Benefit → Universal Credit transition and the LHA/BRMA rate-setting mechanism. Identified that LHA's BRMA geography (supra-borough) obscures sub-borough variation in mobility, and that LHA's 30th-percentile rent cap may push low-income households toward lower-PTAL areas.
+
+14. **Policy research: congestion charging and housing demand (Tang 2017)**
+    Read and analysed Tang, C.K. (2017), "The Cost of Traffic: Evidence from the London Congestion Charge" (LSE working paper). Key finding: homebuyers pay 4.27% more in the CCZ and 2.23% more in the WEZ after the charge is implemented. User clarified that this paper evidences WTP to avoid traffic disamenity rather than WTP for transit accessibility per se. Identified Gibbons & Machin (2005) as the more appropriate citation for transit accessibility premiums in housing markets.
+
+15. **Writing: Top-Down Approaches section (`papers/summative_v1.docx`)**
+    Extracted text from the "old material" section of the draft paper (docx via Python zipfile) and rewrote it as the "Top-Down Approaches" sub-section of "Policies to Boost the Supply of Housing in High-PTAL LSOAs". Covers TOD rationale, London's housing delivery shortfall, the London Plan/NPPF mechanism, and its two structural failures (prisoner's dilemma, regulatory accumulation). Edited directly into the docx using python-docx. Original old material preserved in place.
+
+16. **Vis 5: Brownfield sites map (`plot_brownfield_map()`)**
+    Loaded GLA Brownfield Land Register geopackage (3,066 sites, MultiPolygon, EPSG:27700) and CSV (28-column attribute table). Produced a map overlaying brownfield polygons (brown fill) on borough boundaries with TfL stations and GLA boundary. Installed `ggspatial` for scale bar and north arrow.
+
+17. **Vis 6: Brownfield site area vs distance to TfL station (`plot_brownfield_distance()`)**
+    Scatterplot of log(GIS hectares) vs distance to nearest TfL station (m). Extensive data quality investigation:
+    - CSV `hectares` field rejected: ~80% of values rounded to 2dp, ~40% differ from GIS area by >20% — LPAs submitted estimates not GIS measurements. Switched to `Shape_Area / 10000` from geopackage.
+    - CSV `geox`/`geoy` coordinates rejected: 1,180 sites submitted BNG coordinates instead of WGS84; additional invalid values. Switched to polygon centroids from geopackage for all sites.
+    - Added `gis_ha > 0.01` filter to exclude polygon slivers.
+    - Added 800m reference line citing DfT *Manual for Streets* (2007) as the standard walkability threshold for rail stations.
+    - Updated `data-visualization.md` and created `scripts/figure-notes.md` as a holding file for Quarto figure notes.
+
+18. **Policy research: TOD catchment radius standards**
+    Researched accepted walking-distance thresholds for TOD in UK and metric countries. UK standard: 800m (DfT) to 960m (TfL/PTAL methodology) for rail stations. International metric countries converge on 400m (bus) / 800m (rail). The US half-mile (~800m) is consistent with UK practice.
+
+19. **Policy concepts: land value capture and street votes**
+    Provided brief definitions of land value capture (Section 106, CIL as UK instruments) and the 2022–23 street votes proposal (Hughes & Southwood, Policy Exchange; included in LURA 2023 but not operationalised). User clarified that street votes is unambiguously a bottom-up supply-side mechanism — the supermajority threshold is an empirical obstacle to delivery, not a conceptual tension.
+
+### Scope of AI contribution
+The AI tool performed: policy literature research, document editing (docx), R code development and debugging, data quality investigation, and file maintenance. All analytical framing, paper argument direction, and policy interpretation came from the user.
+
+---
+
+## Session 4 — 2026-04-18/19
+
+**Tool:** Claude Code (claude-sonnet-4-6) via CLI
+
+### Interactions
+
+20. **HCV and transport access findings (`political_economy/hill_final.docx`)**
+    Read the user's prior political economy paper on US housing policy. Extracted key findings on Housing Choice Vouchers: Graves (2016) identifies limited transit access as one of four barriers to HCV uptake in high-opportunity areas; user's paper distinguishes real vs informational transit barriers and recommends transit mapping tools via mobility counselling programs. User noted the parallel to London's LHA/BRMA argument.
+
+21. **MBTA Communities Act dataset inspection (`data/mbta_new_area_slices.gpkg`)**
+    Inspected the MBTA area slices geopackage: 1,898 polygon features across 110 municipalities, fields: id_union, jurisdiction_id, jurisdiction, county, acres; CRS WGS 84. Also inspected companion data: MBTA rapid transit nodes (170 points, LINE field), commuter rail stations (166 points, STATE field — 4 RI stations present), and the MBTA Communities CSV (177 communities, 4 categories, capacity % of housing stock).
+
+22. **Vis 7: MBTA Communities map (`plot_mbta_communities()`)**
+    Built an R map of Greater Boston showing municipalities shaded by MBTA community category (Rapid Transit / Commuter Rail / Adjacent community / Adjacent small town) with upzoned area slice outlines in orange and commuter rail station dots. Multiple rounds of iteration: (a) installed `tigris` package and pulled MA municipal boundaries via `county_subdivisions()`; (b) fixed name-matching (tigris appends " Town"/" City", uses "Manchester-by-the-Sea"); (c) removed rapid transit nodes (too clustered); (d) changed commuter rail from triangles to dots; (e) fixed north arrow style; (f) removed caption/sources from image for Quarto; (g) dissolved slices to municipality level and drew as orange outlines rendered on top of station dots for visibility; (h) clipped commuter rail to MA only and to matched municipalities to remove floating Boston-area dots. Updated `figure-notes.md`, `CLAUDE.md`, and `data-visualization.md`.
+
+23. **Population and area computations**
+    Used `tidycensus` (installed) to pull 2020 Decennial Census population for MBTA communities + Boston: ~5.1M across 168 matched municipalities. Breakdown: Commuter Rail 2.3M, Adjacent community 1.1M, Rapid Transit 760K, Boston 676K, Adjacent small town 264K. Computed area of MBTA communities region (dissolved union): 9,062 km². Computed Greater London area from GLA boundary: 1,595 km². MBTA region is ~5.7× the size of Greater London with ~57% of the population.
+
+24. **Policy research: MBTA Communities Act rationale and quote**
+    Confirmed the Act is framed primarily as a housing supply measure, not a transport expansion effort. Key quote from Housing Secretary Mike Kennealy (2022): "The multifamily zoning requirement is all about setting the table for more transit-oriented housing in the years and decades ahead—which is not just good housing policy, but good climate and transportation policy, too." Source: Massachusetts Housing Partnership, verified via web fetch.
+
+25. **Policy research: UK Planning and Infrastructure Bill TOD provisions**
+    Researched the Bill's transit-oriented development provisions. Key findings: "default yes" presumption for housing within ~800m of stations; 40 dph minimum around all qualifying stations, 50 dph for "well-connected" stations (top 60 TTWAs by GVA, ≥4 trains/hour); Pennycook quote on development corporations and transport provision. Flagged that the NPPF 2025 density provisions are still in draft consultation; Bill's Royal Assent date (claimed December 2025) was flagged as unverified.
+
+26. **Paper structure advice (`papers/summative_v1.docx`)**
+    Read the full draft and advised on where PIB material fits: (a) at end of "Top-Down Approaches" section as government's response to the failures described, (b) in the incomplete para 35 on London lacking zoning. Framed the analytical thread: PIB sits between the current NPPF (discretionary) and the MBTA Act (mandatory) on a binding-mechanism spectrum.
+
+### Scope of AI contribution
+The AI tool performed: R code development and iteration (spatial mapping, statistical computation), policy literature research, dataset inspection, and paper structure advice. All analytical framing, argument direction, variable selection, and paper content came from the user.
+
+---
